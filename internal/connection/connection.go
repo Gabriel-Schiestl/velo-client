@@ -5,20 +5,20 @@ import (
 	"sync"
 )
 
-var conn any
+var conn net.Conn
 var once sync.Once
 
-func GetConn() any {
+func GetConn(addr string) net.Conn {
 	once.Do(
 		func() {
-			conn = connect()
+			conn = connect(addr)
 		},
 	)
 	return conn
 }
 
-func connect() net.Conn {
-	conn, err := net.Dial("tcp", "localhost:9090")
+func connect(addr string) net.Conn {
+	conn, err := net.Dial("tcp", addr)
 	if err != nil {
 		panic(err)
 	}
