@@ -3,9 +3,7 @@ package client
 import (
 	"bytes"
 	"encoding/gob"
-	"fmt"
 	"net"
-	"strings"
 	"time"
 
 	"github.com/Gabriel-Schiestl/velo-client/internal/connection"
@@ -26,12 +24,13 @@ func (c *Client) Set(key string, value any, ttl *time.Duration) error {
 		return err
 	}
 
-	var intTTL *int64
+	var intTTL *uint64
 	if(ttl != nil) {
 		ttlMiliSeconds := ttl.Milliseconds()
 		ttlSeconds := ttlMiliSeconds / 1000
 
-		intTTL = &ttlSeconds
+		intTTL = new(uint64)
+		*intTTL = uint64(ttlSeconds)
 	}
 
 	data := Data{
@@ -49,25 +48,41 @@ func (c *Client) Set(key string, value any, ttl *time.Duration) error {
 }
 
 func (c *Client) send(data Data) error {
-	var buf strings.Builder
+	var buf bytes.Buffer
+
+	buf.WriteByte(byte(len(data.Command)))
 	buf.WriteString(data.Command)
-	buf.WriteString(" ")
+
+	buf.WriteByte(byte(len(data.Key)))
 	buf.WriteString(data.Key)
-	
+
 	if data.Value != nil {
-		buf.WriteString(" ")
-		buf.Write(data.Value)
+		buf.WriteByte(1)
+
+		value, err := getValueBytes(data.Value)
+		if err != nil {
+			return err
+		}
+
+		buf.WriteByte(byte(value.valueType))
+		buf.Write(value.len[:])
+		buf.Write(value.buf)
+	} else {
+		buf.WriteByte(0)
 	}
+
 	if data.TTL != nil {
-		buf.WriteString(" ")
-		fmt.Fprintf(&buf, "%d", *data.TTL)
+		buf.WriteByte(1)
+
+		ttlBuf, err := getBigEndianFromUint64(*data.TTL)
+		if err != nil {
+			return err
+		}
+		buf.Write(ttlBuf[:])
+	} else {
+		buf.WriteByte(0)
 	}
 
-	buf.WriteString("\n")
-
-	_, err := c.conn.Write([]byte(buf.String()))
-	if err != nil {
-		return err
-	}
-	return nil
+	_, err := c.conn.Write(buf.Bytes())
+	return err
 }
