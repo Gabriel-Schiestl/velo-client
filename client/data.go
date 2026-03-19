@@ -60,6 +60,37 @@ func getValueBytes(val any) (*value, error) {
 	return value, nil
 }
 
+func parseValue(data []byte) (any, error) {
+	if len(data) < 4 {
+		return nil, fmt.Errorf("data too short to contain value type and length")
+	}
+
+	valType := valueType(data[0])
+	valLen := binary.BigEndian.Uint16(data[1:3])
+	if len(data) < int(3+valLen) {
+		return nil, fmt.Errorf("data too short to contain value of declared length")
+	}
+
+	valData := data[3 : 3+valLen]
+
+	switch valType {
+	case stringType:
+		return string(valData), nil
+	case byteSliceType:
+		return valData, nil
+	case otherType:
+		var value any
+		buf := bytes.NewBuffer(valData)
+		decoder := gob.NewDecoder(buf)
+		if err := decoder.Decode(&value); err != nil {
+			return nil, err
+		}
+		return value, nil
+	default:
+		return nil, fmt.Errorf("unknown value type: %d", valType)
+	}
+}
+
 func getLengthUint16FromValue(value []byte) ([2]byte, error) {
 	if len(value) > 65535 {
 		return [2]byte{}, fmt.Errorf("value length exceeds uint16 limit")

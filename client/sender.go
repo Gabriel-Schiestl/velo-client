@@ -3,6 +3,7 @@ package client
 import (
 	"bytes"
 	"encoding/gob"
+	"fmt"
 	"net"
 	"time"
 
@@ -15,6 +16,33 @@ type Client struct{
 
 func NewClient(addr string) *Client {
 	return &Client{conn: connection.GetConn(addr)}
+}
+
+func (c *Client) Get(key string) (any, error) {
+	data := Data{
+		Command: "GET",
+		Key: key,
+	}
+
+	if err := c.send(data); err != nil {
+		return nil, err
+	}
+
+	responseBuf := make([]byte, 1024)
+	n, err := c.conn.Read(responseBuf)
+	if err != nil {
+		return nil, err
+	}
+
+	if n == 0 {
+		return nil, nil
+	}
+
+	val, err := parseValue(responseBuf[:n])
+	if err != nil {
+		return nil, err
+	}
+	return val, nil
 }
 
 func (c *Client) Set(key string, value any, ttl *time.Duration) error {
@@ -42,6 +70,20 @@ func (c *Client) Set(key string, value any, ttl *time.Duration) error {
 
 	if err := c.send(data); err != nil {
 		return err
+	}
+
+	var bufResponse bytes.Buffer
+	n, err := c.conn.Read(bufResponse.Bytes())
+	if err != nil {
+		return err
+	}
+
+	if n == 0 {
+		return nil
+	}
+
+	if string(bufResponse.Bytes()[:n]) != "OK" {
+		return fmt.Errorf("unexpected response: %s", string(bufResponse.Bytes()[:n]))
 	}
 
 	return nil
